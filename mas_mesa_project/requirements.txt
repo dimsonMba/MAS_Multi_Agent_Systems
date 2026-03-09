@@ -1,0 +1,8 @@
+mesa
+numpy
+pandas
+matplotlib
+pyserial
+pytest
+networkx
+jupyter
