@@ -1,125 +1,25 @@
-# Mesa MAS Project Scaffold
+# mas_mesa_project
 
-## Project Goal
+Mesa-based multi-agent scaffold for studying decentralized failure recovery in safety-critical systems.
 
-Build a **Mesa-based Multi-Agent System (MAS)** simulation for decentralized failure detection, task redistribution, and safety supervision, while also keeping a clean path for later integration with **Arduino / fan-control prototype logic**.
+## Purpose
 
----
+This project provides a starter architecture to test:
 
-## Recommended Folder Structure
+- failure detection through heartbeat monitoring
+- decentralized consensus on failed agents
+- task redistribution across surviving agents
+- safety supervision with a global kill-switch
 
-```text
-mas_mesa_project/
-│
-├── README.md
-├── requirements.txt
-├── run.py
-├── config.py
-├── .gitignore
-│
-├── data/
-│   ├── logs/
-│   └── results/
-│
-├── docs/
-│   ├── architecture_notes.md
-│   └── experiment_plan.md
-│
-├── mas/
-│   ├── __init__.py
-│   ├── model.py
-│   ├── scheduler.py
-│   ├── environment.py
-│   ├── metrics.py
-│   ├── constants.py
-│   │
-│   ├── agents/
-│   │   ├── __init__.py
-│   │   ├── base_agent.py
-│   │   ├── thermal_agent.py
-│   │   ├── supervisor_agent.py
-│   │   └── recovery_agent.py
-│   │
-│   ├── protocols/
-│   │   ├── __init__.py
-│   │   ├── heartbeat.py
-│   │   ├── consensus.py
-│   │   ├── redistribution.py
-│   │   └── kill_switch.py
-│   │
-│   └── utils/
-│       ├── __init__.py
-│       ├── logger.py
-│       ├── helpers.py
-│       └── plotting.py
-│
-├── control/
-│   ├── __init__.py
-│   ├── control_interface.py
-│   ├── fan_controller.py
-│   ├── temperature_sensor.py
-│   ├── thermal_model.py
-│   └── arduino_bridge.py
-│
-├── hardware/
-│   ├── arduino/
-│   │   └── fan_control.ino
-│   └── wiring_notes.md
-│
-└── tests/
-    ├── __init__.py
-    ├── test_heartbeat.py
-    ├── test_consensus.py
-    ├── test_killswitch.py
-    └── test_thermal_agent.py
-```
+## Quick start
 
----
+1. Create a virtual environment.
+2. Install dependencies from `requirements.txt`.
+3. Run `python run.py`.
 
-## What Each Part Does
+The run script exports CSV metrics into `data/results/` for analysis.
+Use `notebooks/poster_metrics.ipynb` to generate poster-friendly graphs.
 
-### `mas/`
+## Status
 
-Core Mesa simulation.
-
-* `model.py`: the main Mesa model
-* `environment.py`: temperature zones, heat sources, shared environment state
-* `scheduler.py`: custom activation order if needed
-* `metrics.py`: data collection, resilience, recovery time, safety violations
-* `agents/`: all agent classes
-* `protocols/`: heartbeat, failure recovery, consensus, kill-switch logic
-
-### `control/`
-
-Separates real-world fan/sensor logic from simulation logic.
-
-* `fan_controller.py`: fan speed logic
-* `temperature_sensor.py`: abstract sensor interface
-* `thermal_model.py`: simulated temperature dynamics
-* `arduino_bridge.py`: later serial communication with Arduino
-
-### `hardware/arduino/`
-
-Actual Arduino firmware for fans/sensors.
-
----
-
-## `requirements.txt`
-
-```txt
-mesa
-numpy
-pandas
-matplotlib
-pyserial
-pytest
-networkx
-```
-
-Optional later:
-
-```txt
-scipy
-seaborn
-```
-
+This is a scaffold with documented placeholders so you can incrementally implement algorithms and experiments.
