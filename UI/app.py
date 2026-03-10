@@ -14,7 +14,6 @@ if str(ROOT) not in sys.path:
 
 import streamlit as st
 import time
-
 from UI.simulation_controller import SimulationController
 from UI.components import zone_card, control_buttons, simple_agent_view, simulation_animation
 from UI.state_view import render_mas_state
