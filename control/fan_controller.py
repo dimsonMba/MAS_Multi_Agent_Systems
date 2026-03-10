@@ -30,6 +30,6 @@ def compute_fan_speed(
     if error <= 0:
         return 0
 
-    # Stronger gain: even small temp overshoot → enough fan to overcome heat gain
-    speed = int(min(max_speed, error * 18))
+    # Moderate gain: allows visible temperature dynamics instead of perfectly flat control
+    speed = int(min(max_speed, error * 10))
     return speed

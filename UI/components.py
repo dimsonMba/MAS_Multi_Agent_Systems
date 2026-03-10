@@ -58,11 +58,19 @@ def zone_card(zone_id: int, temp: float, fan_speed: int, heat_source: float,
 
 
 def agent_card(zone_id: int, status: str, task_load: int, last_seen: int,
-               current_step: int, heartbeat_timeout: int = 3) -> None:
+               current_step: int, heartbeat_timeout: int = 3,
+               liveness_state: str | None = None) -> None:
     """Display agent status: active/failed/recovering, heartbeat, task load."""
     status_emoji = {"active": "🟢", "failed": "🔴", "recovering": "🟡"}.get(status, "⚪")
-    heartbeat_ok = (current_step - last_seen) <= heartbeat_timeout if status != "failed" else False
-    hb_icon = "❤️" if heartbeat_ok else "💔"
+    dt = current_step - last_seen
+    hb_ok = dt <= heartbeat_timeout and status != "failed"
+    # Show a three-level heartbeat/liveness view.
+    if liveness_state == "suspect":
+        hb_icon = "💤"  # sleepy / suspect
+    elif not hb_ok:
+        hb_icon = "💔"
+    else:
+        hb_icon = "❤️"
 
     st.markdown(
         f"""
@@ -242,10 +250,9 @@ def simulation_animation(model, unsafe_threshold: float = 80.0, target_temp: flo
         controller = _controller_of_zone(model, z)
         agent = agents[z]
         temp = model.zone_temperatures.get(z, agent.temperature)
-        fan_speed = agent.fan_speed
+        # Each zone has its own physical fan; speed comes from model.fan_speeds.
+        fan_speed = model.fan_speeds.get(z, 0)
         heat = model.heat_sources.get(z, 5)
-        if controller and controller.zone_id != z:
-            fan_speed = controller.fan_speed
 
         ratio = min(1.0, temp / unsafe_threshold) if unsafe_threshold > 0 else 0
         r = int(255 * ratio)

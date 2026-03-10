@@ -6,9 +6,9 @@ cooling overcomes heat gain and temperature drops or stabilizes.
 """
 
 # Cooling strength: at full fan (255), cooling = COOLING_FACTOR.
-# Heat gain = 0.15 * heat_input (~1.2 for heat_input=8).
-# Fan must overcome heat: even at ~25% fan, cooling should beat heat gain.
-COOLING_FACTOR = 6.0
+# With a slightly lower factor, temperatures change more gradually so
+# the research plots show visible dynamics instead of a perfectly flat line.
+COOLING_FACTOR = 4.0
 
 
 def update_temperature(

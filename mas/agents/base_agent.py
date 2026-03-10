@@ -31,6 +31,9 @@ class BaseMASAgent(Agent):
         self.status = "active"
         self.neighbors = []
         self.last_seen_step = 0
+        # Heartbeat / liveness tracking
+        self.missed_heartbeats = 0
+        self.liveness_state = "healthy"  # healthy → suspect → failed
 
     def send_heartbeat(self) -> None:
         """
@@ -38,11 +41,17 @@ class BaseMASAgent(Agent):
         Updates last_seen_step so peers can detect missed heartbeats.
         """
         self.last_seen_step = self.model.current_step
+        self.missed_heartbeats = 0
+        if self.liveness_state in ("suspect", "failed"):
+            # Recovery of heartbeat can bring the agent back to healthy.
+            self.liveness_state = "healthy"
 
     def fail(self) -> None:
         """Mark this agent as failed (e.g., after timeout or explicit injection)."""
         self.status = "failed"
+        self.liveness_state = "failed"
 
     def recover(self) -> None:
         """Mark this agent as recovering (transitional state before active)."""
         self.status = "recovering"
+        self.liveness_state = "healthy"

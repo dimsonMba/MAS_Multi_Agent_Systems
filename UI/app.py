@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
 import streamlit as st
 import time
 from UI.simulation_controller import SimulationController
-from UI.components import zone_card, control_buttons, simple_agent_view, simulation_animation
+from UI.components import zone_card, control_buttons, simple_agent_view, simulation_animation, _controller_of_zone
 from UI.state_view import render_mas_state
 from UI.charts import all_charts
 
@@ -151,14 +151,30 @@ with tab_dashboard:
     with col_mid:
         st.subheader("🌡️ Thermal Zones")
         for i in range(model.num_agents):
-            a = model.thermal_agents[i]
+            # Use true model state so takeover is reflected accurately per zone.
+            temp = model.zone_temperatures.get(i, 0.0)
+            fan_speed = model.fan_speeds.get(i, 0)
             zone_card(
                 zone_id=i,
-                temp=a.temperature,
-                fan_speed=a.fan_speed,
+                temp=temp,
+                fan_speed=fan_speed,
                 heat_source=model.heat_sources.get(i, 5),
                 unsafe_threshold=model.unsafe_temp_threshold,
             )
+            # Per-zone heat controls to stress the system like an industrial panel.
+            ctrl_cols = st.columns(3)
+            with ctrl_cols[0]:
+                if st.button("➖ Heat", key=f"heat_minus_{i}"):
+                    current = model.heat_sources.get(i, 5.0)
+                    st.session_state.ctrl.set_heat_source(i, max(0.0, current - 1.0))
+                    st.rerun()
+            with ctrl_cols[1]:
+                st.caption("Heat input")
+            with ctrl_cols[2]:
+                if st.button("➕ Heat", key=f"heat_plus_{i}"):
+                    current = model.heat_sources.get(i, 5.0)
+                    st.session_state.ctrl.set_heat_source(i, current + 1.0)
+                    st.rerun()
 
     with col_right:
         render_mas_state(model, model.heartbeat_timeout)
@@ -166,7 +182,13 @@ with tab_dashboard:
     # Bottom: Charts
     st.divider()
     st.subheader("📊 Charts")
-    all_charts(ctrl.history, model.num_agents)
+    all_charts(
+        ctrl.history,
+        model.num_agents,
+        unsafe_threshold=model.unsafe_temp_threshold,
+        target_temp=model.target_temp,
+        events=getattr(model, "event_log", []),
+    )
 
 with tab_simple:
     st.subheader("👀 What’s happening to the robots?")

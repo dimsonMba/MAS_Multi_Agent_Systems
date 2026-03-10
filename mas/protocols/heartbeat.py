@@ -1,9 +1,10 @@
 """
 Heartbeat protocol: detect failed agents via missed heartbeats.
 
-Agents call send_heartbeat() each step; if last_seen_step is too old
-relative to current_step, the agent is marked failed and added to the
-detected list for redistribution.
+Upgraded protocol with suspicion and escalation:
+- Each agent tracks missed_heartbeats and liveness_state (healthy/suspect/failed).
+- When heartbeats are late but within timeout, agents enter a suspect state.
+- When the timeout is exceeded, agents transition to failed.
 """
 
 
@@ -11,8 +12,9 @@ def detect_failed_agents(model) -> list:
     """
     Find agents that are failed or have missed too many heartbeats.
 
-    Uses model.heartbeat_timeout: if (current_step - last_seen_step) > timeout,
-    the agent is marked failed. Explicitly failed agents are also included.
+    Uses model.heartbeat_timeout and a softer "suspect" band:
+    - If 0 < dt <= timeout: mark agent as suspect.
+    - If dt > timeout: mark agent as failed.
 
     Args:
         model: ThermalMASModel with thermal_agents and heartbeat_timeout.
@@ -21,13 +23,22 @@ def detect_failed_agents(model) -> list:
         List of agents considered failed this step.
     """
     failed = []
+
     for agent in model.thermal_agents:
         if agent.status == "failed":
             failed.append(agent)
             continue
 
-        if model.current_step - agent.last_seen_step > model.heartbeat_timeout:
+        dt = model.current_step - agent.last_seen_step
+
+        if dt > 0:
+            agent.missed_heartbeats = dt
+
+        if 0 < dt <= model.heartbeat_timeout:
+            agent.liveness_state = "suspect"
+        elif dt > model.heartbeat_timeout:
             agent.status = "failed"
+            agent.liveness_state = "failed"
             failed.append(agent)
 
     return failed

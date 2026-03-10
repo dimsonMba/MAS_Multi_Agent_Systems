@@ -50,12 +50,15 @@ class ThermalMASModel(Model):
         self.recovery_events = 0
         self.failed_agents = []
         self.redistribution_log: list[dict] = []  # For UI: [{step, from_agent, to_agent}, ...]
+        self.event_log: list[dict] = []  # For UI + research timeline
 
         if initial_temps is None:
             initial_temps = [30.0] * num_agents
 
         self.heat_sources = {i: 5 + i for i in range(num_agents)}
         self.zone_temperatures = {i: initial_temps[i] for i in range(num_agents)}
+        # One fan per zone – agents can control multiple fans when they take over.
+        self.fan_speeds = {i: 0 for i in range(num_agents)}
         self.thermal_agents = [
             ThermalAgent(self, zone_id=i, initial_temp=initial_temps[i])
             for i in range(num_agents)
@@ -72,6 +75,16 @@ class ThermalMASModel(Model):
             }
         )
 
+    def log_event(self, event_type: str, **payload) -> None:
+        """Append a structured event for research timelines and UI logs."""
+        self.event_log.append(
+            {
+                "step": self.current_step,
+                "type": event_type,
+                **payload,
+            }
+        )
+
     def check_local_safety(self, agent) -> None:
         """
         Sync agent's temperature into model state for safety checks.
@@ -85,17 +98,21 @@ class ThermalMASModel(Model):
         """
         if self.current_step == self.failure_step and self.thermal_agents:
             import random
+
             idx = random.randint(0, len(self.thermal_agents) - 1)
             self.thermal_agents[idx].fail()
+            self.log_event("auto_failure_injected", agent=idx)
 
     def inject_failure_random(self) -> None:
         """Fail a random active agent (for UI 'Inject random failure')."""
         import random
+
         active = [a for a in self.thermal_agents if a.status == "active"]
         if not active:
             return
         victim = random.choice(active)
         victim.fail()
+        self.log_event("random_failure_injected", agent=victim.zone_id)
 
     def inject_failure_manual(self, agent_index: int) -> None:
         """
@@ -103,6 +120,7 @@ class ThermalMASModel(Model):
         """
         if 0 <= agent_index < len(self.thermal_agents):
             self.thermal_agents[agent_index].fail()
+            self.log_event("manual_failure_injected", agent=agent_index)
 
     def trigger_unsafe_condition(self, zone_index: int = 0) -> None:
         """
@@ -124,9 +142,24 @@ class ThermalMASModel(Model):
         self.failed_agents = detected
 
         for failed_agent in detected:
+            # Skip agents whose tasks are already fully reassigned.
+            if getattr(failed_agent, "tasks_reassigned", False):
+                continue
+
+            # Heartbeat-based failure detection event
+            self.log_event(
+                "heartbeat_failure_detected",
+                agent=failed_agent.zone_id,
+            )
+
             winner = consensus_for_reassignment(self, failed_agent)
             if winner is not None:
-                redistribute_tasks(self, failed_agent)
+                self.log_event(
+                    "consensus_assignment",
+                    from_agent=failed_agent.zone_id,
+                    to_agent=winner.zone_id,
+                )
+                redistribute_tasks(self, failed_agent, receiver=winner)
 
     def step(self) -> None:
         """

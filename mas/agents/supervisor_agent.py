@@ -25,4 +25,7 @@ class SupervisorAgent(BaseMASAgent):
         Check safety conditions; if triggered, shut down the system.
         """
         if should_trigger_kill_switch(self.model):
+            if not self.model.system_shutdown:
+                # Log only on first activation so the timeline has a single, clear event.
+                self.model.log_event("kill_switch_triggered")
             self.model.system_shutdown = True

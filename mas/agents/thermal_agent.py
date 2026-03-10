@@ -27,6 +27,7 @@ class ThermalAgent(BaseMASAgent):
         super().__init__(model, unique_id=zone_id)
         self.zone_id = zone_id
         self.temperature = initial_temp
+        # Primary fan for this zone; additional zones use model.fan_speeds[z].
         self.fan_speed = 0
         self.target_load = 1.0
         self.assigned_heat_sources = [zone_id]
@@ -47,10 +48,11 @@ class ThermalAgent(BaseMASAgent):
         for z in self.assigned_heat_sources:
             curr = self.model.zone_temperatures.get(z, self.temperature)
             heat = self.model.heat_sources.get(z, 5)
+            fan = self.model.fan_speeds.get(z, 0)
             new_temp = update_temperature(
                 current_temp=curr,
                 heat_input=heat,
-                fan_speed=self.fan_speed,
+                fan_speed=fan,
             )
             self.model.zone_temperatures[z] = new_temp
             if z == self.zone_id:
@@ -58,17 +60,20 @@ class ThermalAgent(BaseMASAgent):
 
     def control_fan(self) -> None:
         """
-        Compute fan speed from the hottest zone we control.
-        Higher temp → higher fan speed → more cooling.
+        Compute fan speed separately for each zone we control.
+        Each zone has its own physical fan; when an agent takes over,
+        it commands both its own fan and the failed agent's fan.
         """
-        max_temp = max(
-            self.model.zone_temperatures.get(z, self.temperature)
-            for z in self.assigned_heat_sources
-        )
-        self.fan_speed = compute_fan_speed(
-            current_temp=max_temp,
-            target_temp=self.model.target_temp,
-        )
+        for z in self.assigned_heat_sources:
+            temp_z = self.model.zone_temperatures.get(z, self.temperature)
+            fan = compute_fan_speed(
+                current_temp=temp_z,
+                target_temp=self.model.target_temp,
+            )
+            self.model.fan_speeds[z] = fan
+
+        # Expose primary fan for UI summaries (this agent's own zone).
+        self.fan_speed = self.model.fan_speeds.get(self.zone_id, 0)
 
     def step(self) -> None:
         """
