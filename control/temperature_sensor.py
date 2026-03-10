@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 
-
 @dataclass
 class TemperatureSensor:
     """Simple in-memory sensor model for simulation mode."""

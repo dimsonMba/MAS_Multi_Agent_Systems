@@ -1,33 +1,38 @@
-"""Entrypoint for running a small scaffold simulation."""
+"""
+Entry point for running the resilient thermal MAS simulation.
 
-from datetime import datetime
+Creates a ThermalMASModel, runs it for a fixed number of steps,
+exports metrics to CSV, and prints the last few rows.
+"""
+
 from pathlib import Path
 
-from config import DEFAULT_AGENT_COUNT, DEFAULT_GRID_HEIGHT, DEFAULT_GRID_WIDTH, DEFAULT_STEPS
-from mas.metrics import export_metrics_to_csv
-from mas.model import ResilientMASModel
+from mas.model import ThermalMASModel
 
 
 def main() -> None:
-    """Run the model for a fixed number of steps."""
-    model = ResilientMASModel(
-        width=DEFAULT_GRID_WIDTH,
-        height=DEFAULT_GRID_HEIGHT,
-        n_agents=DEFAULT_AGENT_COUNT,
+    model = ThermalMASModel(
+        num_agents=3,
+        width=5,
+        height=5,
+        initial_temps=[45.0, 50.0, 55.0],
+        failure_step=20,
+        unsafe_temp_threshold=80.0,
     )
 
-    for _ in range(DEFAULT_STEPS):
+    for _ in range(50):
         model.step()
 
-    # Export step-by-step metrics for notebook analysis and poster visuals.
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_file = Path("data/results") / f"metrics_{timestamp}.csv"
-    csv_path = export_metrics_to_csv(model.metrics_history, str(output_file))
+    df = model.datacollector.get_model_vars_dataframe()
 
-    print("Simulation complete.")
-    print(f"Steps executed: {model.current_step}")
-    print(f"Detected failures: {model.failure_events}")
-    print(f"Metrics exported to: {csv_path}")
+    # Export to CSV
+    results_dir = Path(__file__).parent / "data" / "results"
+    results_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = results_dir / "simulation_metrics.csv"
+    df.to_csv(csv_path, index=False)
+    print(f"Metrics saved to {csv_path}")
+
+    print(df.tail())
 
 
 if __name__ == "__main__":

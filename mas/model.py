@@ -1,69 +1,149 @@
-"""Mesa model for decentralized failure recovery experiments."""
+"""
+Main Mesa model for the resilient thermal MAS.
 
-from __future__ import annotations
-
-import random
+Coordinates thermal agents, failure injection, heartbeat-based detection,
+task redistribution, and safety supervision. Collects metrics for experiments.
+"""
 
 from mesa import Model
-from mesa.space import MultiGrid
+from mesa.datacollection import DataCollector
 
-from config import FAILURE_PROBABILITY
 from mas.agents.thermal_agent import ThermalAgent
-from mas.environment import EnvironmentState
-from mas.metrics import MetricsSnapshot
-from mas.scheduler import ResilienceScheduler
+from mas.agents.supervisor_agent import SupervisorAgent
+from mas.protocols.heartbeat import detect_failed_agents
+from mas.protocols.redistribution import redistribute_tasks
+from mas.protocols.consensus import consensus_for_reassignment
+
+from config import HEARTBEAT_TIMEOUT
 
 
-class ResilientMASModel(Model):
-    """Main simulation model.
+class ThermalMASModel(Model):
+    """
+    Mesa model for decentralized failure recovery in a thermal MAS.
 
-    The scaffold currently injects random failures and records simple metrics.
+    Manages thermal agents (one per zone), a supervisor for safety,
+    failure injection, and recovery protocols. DataCollector records
+    step, failed_agents, recovery_events, system_shutdown, max_temp.
     """
 
-    def __init__(self, width: int, height: int, n_agents: int) -> None:
+    def __init__(
+        self,
+        num_agents: int = 3,
+        width: int = 5,
+        height: int = 5,
+        initial_temps: list | None = None,
+        failure_step: int = 20,
+        unsafe_temp_threshold: float = 80.0,
+        target_temp: float = 35.0,
+    ):
         super().__init__()
-        self.grid = MultiGrid(width, height, torus=False)
-        self.schedule = ResilienceScheduler(self)
-        self.environment = EnvironmentState()
+        self.num_agents = num_agents
+        self.width = width
+        self.height = height
         self.current_step = 0
-        self.failure_events = 0
-        self.metrics_history: list[MetricsSnapshot] = []
+        self.failure_step = failure_step
+        self.target_temp = target_temp
+        self.unsafe_temp_threshold = unsafe_temp_threshold
+        self.heartbeat_timeout = HEARTBEAT_TIMEOUT
+        self.max_failed_agents_before_shutdown = 2
+        self.system_shutdown = False
+        self.recovery_events = 0
+        self.failed_agents = []
+        self.redistribution_log: list[dict] = []  # For UI: [{step, from_agent, to_agent}, ...]
 
-        for i in range(n_agents):
-            agent = ThermalAgent(unique_id=i, model=self)
-            self.schedule.add(agent)
-            x = self.random.randrange(self.grid.width)
-            y = self.random.randrange(self.grid.height)
-            self.grid.place_agent(agent, (x, y))
+        if initial_temps is None:
+            initial_temps = [30.0] * num_agents
 
-    def _inject_failures(self) -> None:
-        """Randomly fail active agents for baseline resilience testing."""
-        for agent in self.schedule.agents:
-            if agent.failed:
-                continue
-            if random.random() < FAILURE_PROBABILITY:
-                agent.failed = True
-                self.failure_events += 1
-
-    def _collect_metrics(self) -> None:
-        alive_agents = sum(1 for a in self.schedule.agents if not a.failed)
-        failed_agents = sum(1 for a in self.schedule.agents if a.failed)
-        total_agents = alive_agents + failed_agents
-        operational_ratio = (alive_agents / total_agents) if total_agents else 0.0
-        self.metrics_history.append(
-            MetricsSnapshot(
-                step=self.current_step,
-                alive_agents=alive_agents,
-                failed_agents=failed_agents,
-                hazard_flag=self.environment.hazard_flag,
-                total_failure_events=self.failure_events,
-                operational_ratio=operational_ratio,
-            )
+        self.heat_sources = {i: 5 + i for i in range(num_agents)}
+        self.zone_temperatures = {i: initial_temps[i] for i in range(num_agents)}
+        self.thermal_agents = [
+            ThermalAgent(self, zone_id=i, initial_temp=initial_temps[i])
+            for i in range(num_agents)
+        ]
+        # Supervisor uses a distinct unique_id (num_agents) so it doesn't collide
+        self.supervisor = SupervisorAgent(self, unique_id=num_agents)
+        self.datacollector = DataCollector(
+            model_reporters={
+                "step": lambda m: m.current_step,
+                "failed_agents": lambda m: len([a for a in m.thermal_agents if a.status == "failed"]),
+                "recovery_events": lambda m: m.recovery_events,
+                "system_shutdown": lambda m: m.system_shutdown,
+                "max_temp": lambda m: max(m.zone_temperatures.values()),
+            }
         )
 
+    def check_local_safety(self, agent) -> None:
+        """
+        Sync agent's temperature into model state for safety checks.
+        Called by each ThermalAgent after updating its zone temperature.
+        """
+        self.zone_temperatures[agent.zone_id] = agent.temperature
+
+    def inject_failure(self) -> None:
+        """
+        At failure_step: fail one agent (random for simulation variety).
+        """
+        if self.current_step == self.failure_step and self.thermal_agents:
+            import random
+            idx = random.randint(0, len(self.thermal_agents) - 1)
+            self.thermal_agents[idx].fail()
+
+    def inject_failure_random(self) -> None:
+        """Fail a random active agent (for UI 'Inject random failure')."""
+        import random
+        active = [a for a in self.thermal_agents if a.status == "active"]
+        if not active:
+            return
+        victim = random.choice(active)
+        victim.fail()
+
+    def inject_failure_manual(self, agent_index: int) -> None:
+        """
+        Manually fail an agent (for UI-triggered failure injection).
+        """
+        if 0 <= agent_index < len(self.thermal_agents):
+            self.thermal_agents[agent_index].fail()
+
+    def trigger_unsafe_condition(self, zone_index: int = 0) -> None:
+        """
+        Manually trigger unsafe condition by setting a zone temp above threshold.
+        Used for UI testing of kill-switch.
+        """
+        unsafe_temp = self.unsafe_temp_threshold + 5.0
+        for i in range(self.num_agents):
+            self.zone_temperatures[i] = unsafe_temp
+            self.thermal_agents[i].temperature = unsafe_temp
+
+    def handle_failure(self) -> None:
+        """
+        Run failure detection, consensus, and task redistribution.
+        Detects failed agents via heartbeat timeout, picks a receiver
+        via consensus, and redistributes the failed agent's tasks.
+        """
+        detected = detect_failed_agents(self)
+        self.failed_agents = detected
+
+        for failed_agent in detected:
+            winner = consensus_for_reassignment(self, failed_agent)
+            if winner is not None:
+                redistribute_tasks(self, failed_agent)
+
     def step(self) -> None:
-        """Advance simulation by one tick."""
+        """
+        One simulation step: inject failures, run agents, handle recovery,
+        run supervisor, advance step, collect metrics.
+        """
+        if self.system_shutdown:
+            self.datacollector.collect(self)
+            return
+
+        self.inject_failure()
+
+        for agent in self.thermal_agents:
+            agent.step()
+
+        self.handle_failure()
+        self.supervisor.step()
+
         self.current_step += 1
-        self._inject_failures()
-        self.schedule.step()
-        self._collect_metrics()
+        self.datacollector.collect(self)

@@ -1,20 +1,28 @@
-"""Supervisor agent for safety oversight."""
+"""
+Supervisor agent: global safety monitor and kill-switch.
 
-from config import CRITICAL_TEMPERATURE
-from mas.agents.base_agent import BaseResilientAgent
-from mas.protocols.kill_switch import evaluate_kill_switch
+Checks whether temperatures or failure counts exceed thresholds and
+triggers system shutdown when needed. Runs once per step after agents.
+"""
+
+from mas.agents.base_agent import BaseMASAgent
+from mas.protocols.kill_switch import should_trigger_kill_switch
 
 
-class SupervisorAgent(BaseResilientAgent):
-    """Monitors global safety state and can trigger kill-switch."""
+class SupervisorAgent(BaseMASAgent):
+    """
+    Agent that monitors global safety and triggers the kill-switch.
+
+    Does not manage a thermal zone; only evaluates safety conditions
+    and sets model.system_shutdown when thresholds are exceeded.
+    """
+
+    def __init__(self, model, unique_id=None, *args, **kwargs):
+        super().__init__(model, unique_id=unique_id, *args, **kwargs)
 
     def step(self) -> None:
-        if self.failed:
-            return
-
-        # Placeholder: use ambient temperature as the monitored variable.
-        ambient = self.model.environment.ambient_temperature
-        if ambient >= CRITICAL_TEMPERATURE:
-            self.model.environment.hazard_flag = True
-
-        evaluate_kill_switch(self.model)
+        """
+        Check safety conditions; if triggered, shut down the system.
+        """
+        if should_trigger_kill_switch(self.model):
+            self.model.system_shutdown = True

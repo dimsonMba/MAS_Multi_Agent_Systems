@@ -1,8 +1,37 @@
-"""Simple thermal dynamics helper."""
+"""
+Thermal dynamics for simulation.
+
+Heat source adds heat; fan removes heat. When the fan runs at sufficient speed,
+cooling overcomes heat gain and temperature drops or stabilizes.
+"""
+
+# Cooling strength: at full fan (255), cooling = COOLING_FACTOR.
+# Heat gain = 0.15 * heat_input (~1.2 for heat_input=8).
+# Fan must overcome heat: even at ~25% fan, cooling should beat heat gain.
+COOLING_FACTOR = 6.0
 
 
-def next_temperature(current: float, ambient: float, fan_speed: int) -> float:
-    """Estimate next temperature given ambient conditions and cooling."""
-    cooling = fan_speed * 0.02
-    drift = (ambient - current) * 0.1
-    return current + drift - cooling
+def update_temperature(
+    current_temp: float,
+    heat_input: float,
+    fan_speed: float,
+) -> float:
+    """
+    Compute next temperature: heat gain minus fan cooling.
+
+    When fan runs at sufficient speed, cooling overcomes heat gain
+    and temperature decreases. When fan is off or low, temperature rises.
+
+    Args:
+        current_temp: Current zone temperature.
+        heat_input: Heat source strength (e.g., from model.heat_sources).
+        fan_speed: Fan PWM value (0–255). Higher = more cooling.
+
+    Returns:
+        Next temperature (clamped to [0, 200]).
+    """
+    heat_gain = 0.15 * heat_input
+    cooling = COOLING_FACTOR * (fan_speed / 255)
+    next_temp = current_temp + heat_gain - cooling
+
+    return max(0.0, min(200.0, next_temp))

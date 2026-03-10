@@ -2,6 +2,8 @@ mesa
 numpy
 pandas
 matplotlib
+plotly
+streamlit
 pyserial
 pytest
 networkx
