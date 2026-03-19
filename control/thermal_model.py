@@ -1,37 +1,42 @@
 """
 Thermal dynamics for simulation.
 
-Heat source adds heat; fan removes heat. When the fan runs at sufficient speed,
-cooling overcomes heat gain and temperature drops or stabilizes.
+The model approximates temperature evolution using:
+- heat input from the environment / source
+- cooling from fan actuation
+- passive drift toward ambient temperature
+- optional disturbance term for experiments
 """
 
-# Cooling strength: at full fan (255), cooling = COOLING_FACTOR.
-# With a slightly lower factor, temperatures change more gradually so
-# the research plots show visible dynamics instead of a perfectly flat line.
+AMBIENT_TEMP = 25.0
 COOLING_FACTOR = 4.0
+HEAT_GAIN_FACTOR = 0.15
+AMBIENT_COUPLING = 0.03
 
 
 def update_temperature(
     current_temp: float,
     heat_input: float,
     fan_speed: float,
+    ambient_temp: float = AMBIENT_TEMP,
+    disturbance: float = 0.0,
 ) -> float:
     """
-    Compute next temperature: heat gain minus fan cooling.
-
-    When fan runs at sufficient speed, cooling overcomes heat gain
-    and temperature decreases. When fan is off or low, temperature rises.
+    Compute the next zone temperature.
 
     Args:
-        current_temp: Current zone temperature.
-        heat_input: Heat source strength (e.g., from model.heat_sources).
-        fan_speed: Fan PWM value (0–255). Higher = more cooling.
+        current_temp: Current temperature.
+        heat_input: Heat source strength.
+        fan_speed: Fan command (0-255).
+        ambient_temp: Background environmental temperature.
+        disturbance: Extra disturbance term for experiments.
 
     Returns:
-        Next temperature (clamped to [0, 200]).
+        Next temperature, clamped to [0, 200].
     """
-    heat_gain = 0.15 * heat_input
-    cooling = COOLING_FACTOR * (fan_speed / 255)
-    next_temp = current_temp + heat_gain - cooling
+    heat_gain = HEAT_GAIN_FACTOR * heat_input
+    cooling = COOLING_FACTOR * (fan_speed / 255.0)
+    ambient_pull = AMBIENT_COUPLING * (ambient_temp - current_temp)
 
+    next_temp = current_temp + heat_gain - cooling + ambient_pull + disturbance
     return max(0.0, min(200.0, next_temp))

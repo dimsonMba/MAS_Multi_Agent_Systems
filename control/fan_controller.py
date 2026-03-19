@@ -1,35 +1,48 @@
 """
 Fan speed computation for thermal control.
 
-Maps temperature error (current - target) to a PWM-like fan speed (0–255).
-Used by ThermalAgent to decide how much cooling to apply.
+Implements a simple proportional controller with:
+- configurable gain
+- optional deadband
+- optional minimum actuation threshold
 """
-
 
 def compute_fan_speed(
     current_temp: float,
     target_temp: float,
     max_speed: int = 255,
+    kp: float = 10.0,
+    deadband: float = 0.5,
+    min_speed: int = 0,
 ) -> int:
     """
-    Compute fan speed from temperature error (proportional control).
-
-    If current_temp <= target_temp, returns 0 (no cooling needed).
-    Otherwise, speed increases with error, capped at max_speed.
+    Compute fan speed from temperature error.
 
     Args:
-        current_temp: Current zone temperature.
+        current_temp: Measured zone temperature.
         target_temp: Desired temperature setpoint.
-        max_speed: Maximum PWM value (default 255).
+        max_speed: Maximum PWM-like command.
+        kp: Proportional gain.
+        deadband: Ignore very small errors to reduce oscillation.
+        min_speed: Minimum nonzero actuation once control engages.
 
     Returns:
-        Fan speed in range [0, max_speed].
+        Fan speed in [0, max_speed].
     """
     error = current_temp - target_temp
 
-    if error <= 0:
+    if error <= deadband:
         return 0
 
-    # Moderate gain: allows visible temperature dynamics instead of perfectly flat control
-    speed = int(min(max_speed, error * 10))
+    raw_speed = int(kp * error)
+    speed = min(max_speed, raw_speed)
+
+    if speed > 0:
+        speed = max(speed, min_speed)
+
     return speed
+
+
+def pwm_to_percent(speed: int, max_speed: int = 255) -> float:
+    """Convert PWM-like speed command to percentage."""
+    return (speed / max_speed) * 100.0

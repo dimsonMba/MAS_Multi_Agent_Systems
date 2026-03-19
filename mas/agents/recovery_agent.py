@@ -1,13 +1,16 @@
-"""Recovery agent for decentralized reallocation decisions."""
+"""Deprecated recovery agent (kept for compatibility).
 
-from mas.agents.base_agent import BaseResilientAgent
-from mas.protocols.redistribution import redistribute_tasks
+The current architecture performs failure handling and redistribution in
+`ThermalMASModel.handle_failure()` using heartbeat detection + consensus,
+so this agent is not used by the main simulation path.
+"""
+
+from mas.agents.base_agent import BaseMASAgent
 
 
-class RecoveryAgent(BaseResilientAgent):
-    """Coordinates task redistribution after detected failures."""
+class RecoveryAgent(BaseMASAgent):
+    """Compatibility stub. Not used by current simulation."""
 
     def step(self) -> None:
-        if self.failed:
-            return
-        redistribute_tasks(self.model)
+        # Intentionally no-op: redistribution is handled by the model.
+        return

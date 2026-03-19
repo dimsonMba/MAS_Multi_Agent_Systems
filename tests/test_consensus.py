@@ -28,7 +28,7 @@ def test_consensus_prefers_cooler_and_less_loaded_agent() -> None:
     a2 = FakeAgent(zone_id=2, temp=40.0, task_load=1)  # cooler, lighter
     model = _make_model([failed, a1, a2])
 
-    winner = consensus_for_reassignment(model, failed)
+    winner, _ = consensus_for_reassignment(model, failed)
     assert winner is a2
 
 
@@ -39,7 +39,7 @@ def test_consensus_avoids_agent_near_unsafe_threshold() -> None:
     safer = FakeAgent(zone_id=3, temp=50.0, task_load=1)  # cooler but farther
     model = _make_model([failed, near_unsafe, safer], unsafe=80.0)
 
-    winner = consensus_for_reassignment(model, failed)
+    winner, _ = consensus_for_reassignment(model, failed)
     assert winner is safer
 
 
@@ -49,6 +49,7 @@ def test_consensus_returns_none_if_no_active_candidates() -> None:
     other = FakeAgent(zone_id=0, temp=40.0, task_load=1, status="failed")
     model = _make_model([failed, other])
 
-    winner = consensus_for_reassignment(model, failed)
+    winner, scored = consensus_for_reassignment(model, failed)
     assert winner is None
+    assert scored == []
 

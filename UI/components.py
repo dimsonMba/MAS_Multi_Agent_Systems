@@ -1,230 +1,370 @@
 """
-Reusable UI components for the MAS simulation dashboard.
+Reusable UI components for the MAS research dashboard.
 
-Zone cards, agent cards, control buttons, and status indicators
-with consistent icons and styling.
+Industrial/research-oriented components:
+- system status badge
+- thermal zone panels
+- agent state cards
+- supervisor state card
+- control bar
+- simplified public-demo view
 """
 
 import streamlit as st
 
-# Icons for the research prototype
 ICONS = {
-    "heat": "🔥",
-    "fan": "🌀",
-    "agent": "🤖",
     "temp": "🌡️",
+    "fan": "🌀",
+    "heat": "🔥",
+    "agent": "🤖",
     "heartbeat": "❤️",
-    "kill_switch": "🛑",
+    "warning": "⚠️",
+    "critical": "🚨",
+    "shutdown": "🛑",
     "recovery": "🔄",
+    "supervisor": "🛡️",
     "play": "▶️",
     "pause": "⏸️",
     "step": "⏭️",
-    "reset": "🔄",
     "inject": "💉",
-    "unsafe": "⚠️",
 }
 
 
-def zone_card(zone_id: int, temp: float, fan_speed: int, heat_source: float,
-              unsafe_threshold: float = 80.0) -> None:
-    """
-    Display a thermal zone with temp, fan speed, heat source.
-    Color gradient from cool (blue) to hot (red) based on temp.
-    """
-    ratio = min(1.0, temp / unsafe_threshold) if unsafe_threshold > 0 else 0
-    # RGB: blue (0) -> cyan -> green -> yellow -> red (1)
-    r = int(255 * ratio)
-    g = int(255 * (1 - ratio * 0.7))
-    b = int(255 * (1 - ratio))
-    r, g, b = max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b))
-    bg = f"rgb({r},{g},{b})"
-    fg = "white" if ratio > 0.5 else "black"
+def _fan_pct(pwm: int) -> float:
+    return (max(0, min(255, pwm)) / 255.0) * 100.0
+
+
+def system_status_badge(model) -> None:
+    """Render overall system health badge."""
+    max_temp = max(model.zone_temperatures.values()) if model.zone_temperatures else 0.0
+    unsafe = getattr(model, "unsafe_temp_threshold", 80.0)
+    warning = unsafe * 0.85
+
+    if model.system_shutdown:
+        label = "System Status: Emergency Shutdown"
+        color = "#ef4444"
+    elif max_temp >= unsafe:
+        label = "System Status: Critical Thermal Condition"
+        color = "#dc2626"
+    elif max_temp >= warning:
+        label = "System Status: Warning"
+        color = "#f59e0b"
+    else:
+        label = "System Status: Operational"
+        color = "#22c55e"
 
     st.markdown(
         f"""
         <div style="
-            padding: 1rem; border-radius: 8px; margin: 0.5rem 0;
-            background: {bg}; color: {fg}; font-weight: bold;
-            border: 2px solid #333;
+            margin: 0.25rem 0 0.5rem 0;
+            padding: 0.7rem 1rem;
+            border-radius: 12px;
+            background: {color};
+            color: white;
+            font-weight: 800;
+            font-size: 1rem;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.18);
         ">
-            <span style="font-size: 1.5rem;">{ICONS['temp']}</span> Zone {zone_id + 1}
-            <br>Temp: <strong>{temp:.1f}°C</strong>
-            <br><span style="font-size: 1.2rem;">{ICONS['fan']}</span> Fan: {fan_speed}/255
-            <br><span style="font-size: 1.2rem;">{ICONS['heat']}</span> Heat: {heat_source:.1f}
+            {label}
         </div>
         """,
         unsafe_allow_html=True,
     )
 
 
-def agent_card(zone_id: int, status: str, task_load: int, last_seen: int,
-               current_step: int, heartbeat_timeout: int = 3,
-               liveness_state: str | None = None) -> None:
-    """Display agent status: active/failed/recovering, heartbeat, task load."""
-    status_emoji = {"active": "🟢", "failed": "🔴", "recovering": "🟡"}.get(status, "⚪")
+def supervisor_card(model) -> None:
+    """Research/industrial supervisor panel."""
+    unsafe = getattr(model, "unsafe_temp_threshold", 80.0)
+    temps = list(getattr(model, "zone_temperatures", {}).values())
+    max_temp = max(temps) if temps else 0.0
+    warning_at = unsafe * 0.85
+
+    if getattr(model, "system_shutdown", False):
+        state = "SHUTDOWN"
+        color = "#ef4444"
+        msg = "Unsafe system condition detected. Emergency shutdown has been activated."
+    elif max_temp >= unsafe:
+        state = "CRITICAL"
+        color = "#dc2626"
+        msg = "A zone has exceeded the unsafe thermal threshold."
+    elif max_temp >= warning_at:
+        state = "WARNING"
+        color = "#f59e0b"
+        msg = "Thermal conditions are approaching the unsafe threshold."
+    else:
+        state = "NORMAL"
+        color = "#22c55e"
+        msg = "Supervisory safety monitoring is active."
+
+    st.markdown(
+        f"""
+        <div style="
+            padding: 0.95rem;
+            border-radius: 12px;
+            margin: 0.35rem 0 0.8rem 0;
+            background: #0f172a;
+            color: #e5e7eb;
+            border: 2px solid {color};
+            box-shadow: 0 6px 18px rgba(0,0,0,0.22);
+        ">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+                <div style="font-size:1rem;font-weight:800;">{ICONS['supervisor']} Supervisor</div>
+                <div style="
+                    padding:4px 10px;
+                    border-radius:999px;
+                    background:{color};
+                    color:white;
+                    font-weight:900;
+                    font-size:0.85rem;
+                ">
+                    {state}
+                </div>
+            </div>
+            <div style="margin-top:8px;font-size:0.94rem;line-height:1.35;">
+                <div><strong>Hottest zone:</strong> {max_temp:.1f} °C</div>
+                <div style="margin-top:6px;">{msg}</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def zone_card(
+    zone_id: int,
+    temp: float,
+    fan_speed: int,
+    heat_source: float,
+    unsafe_threshold: float = 80.0,
+    target_temp: float = 35.0,
+) -> None:
+    """Industrial thermal zone card (no raw HTML; always renders)."""
+    fan_pct = _fan_pct(fan_speed)
+
+    if temp >= unsafe_threshold:
+        banner = "🚨 UNSAFE"
+    elif temp >= unsafe_threshold * 0.85:
+        banner = "⚠️ WARNING"
+    else:
+        banner = "✅ NOMINAL"
+
+    with st.container():
+        st.markdown(f"### {ICONS['temp']} Zone {zone_id + 1}  \n{banner}")
+
+        c1, c2 = st.columns(2)
+        with c1:
+            st.metric("Current Temperature (°C)", f"{temp:.1f}")
+        with c2:
+            st.metric("Target Temperature (°C)", f"{target_temp:.1f}")
+
+        c3, c4 = st.columns(2)
+        with c3:
+            st.metric("Fan Command", f"{fan_pct:.0f}% ({fan_speed}/255)")
+            st.progress(int(max(0, min(100, fan_pct))))
+        with c4:
+            st.metric("Heat Input", f"{heat_source:.1f}")
+
+        st.divider()
+
+
+def agent_card(
+    zone_id: int,
+    status: str,
+    task_load: int,
+    last_seen: int,
+    current_step: int,
+    heartbeat_timeout: int = 3,
+    liveness_state: str | None = None,
+) -> None:
+    """Render agent operational and liveness state."""
+    if status == "failed":
+        border = "#ef4444"
+        badge = "FAILED"
+    elif status == "recovering":
+        border = "#f59e0b"
+        badge = "RECOVERING"
+    else:
+        border = "#22c55e"
+        badge = "ACTIVE"
+
     dt = current_step - last_seen
-    hb_ok = dt <= heartbeat_timeout and status != "failed"
-    # Show a three-level heartbeat/liveness view.
     if liveness_state == "suspect":
-        hb_icon = "💤"  # sleepy / suspect
-    elif not hb_ok:
+        hb_label = "Suspect"
+        hb_icon = "💤"
+    elif status == "failed" or dt > heartbeat_timeout:
+        hb_label = "Lost"
         hb_icon = "💔"
     else:
+        hb_label = "Healthy"
         hb_icon = "❤️"
 
     st.markdown(
         f"""
         <div style="
-            padding: 0.8rem; border-radius: 6px; margin: 0.3rem 0;
-            background: #1e1e2e; color: #cdd6f4; border-left: 4px solid
-            {'#a6e3a1' if status == 'active' else '#f38ba8' if status == 'failed' else '#f9e2af'};
+            background:#111827;
+            color:#e5e7eb;
+            border-left:5px solid {border};
+            border-radius:10px;
+            padding:0.85rem;
+            margin:0.35rem 0;
         ">
-            {ICONS['agent']} <strong>Agent {zone_id + 1}</strong> {status_emoji} {status}
-            <br>{hb_icon} Heartbeat | Load: {task_load} zone(s)
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="font-weight:800;">{ICONS['agent']} Agent {zone_id + 1}</div>
+                <div style="
+                    background:{border};
+                    color:white;
+                    padding:3px 9px;
+                    border-radius:999px;
+                    font-size:0.78rem;
+                    font-weight:800;
+                ">
+                    {badge}
+                </div>
+            </div>
+            <div style="margin-top:8px;font-size:0.92rem;">
+                <div>{hb_icon} <strong>Liveness:</strong> {hb_label}</div>
+                <div><strong>Task load:</strong> {task_load} zone(s)</div>
+                <div><strong>Last heartbeat step:</strong> {last_seen}</div>
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
 
-def control_buttons(ctrl) -> None:
-    """Render Start, Pause, Step, Inject (chosen agent), Inject random, Trigger Unsafe."""
-    cols = st.columns(6)
-    buttons_config = [
-        (ICONS["play"], "Start", "btn_start"),
-        (ICONS["pause"], "Pause", "btn_pause"),
-        (ICONS["step"], "Step", "btn_step"),
-        (ICONS["inject"], "Fail chosen", "btn_inject"),
-        (ICONS["inject"], "Fail random", "btn_inject_random"),
-        (ICONS["unsafe"], "Trigger Unsafe", "btn_unsafe"),
-    ]
-    for col, (icon, label, key) in zip(cols, buttons_config):
-        with col:
-            if st.button(f"{icon} {label}", key=key, use_container_width=True):
-                if key == "btn_start":
-                    st.session_state.auto_run = True
-                    st.rerun()
-                elif key == "btn_pause":
-                    st.session_state.auto_run = False
-                    st.rerun()
-                elif key == "btn_step":
-                    ctrl.run_step()
-                    st.rerun()
-                elif key == "btn_inject":
-                    agent_idx = st.session_state.get("inject_agent", 1)
-                    ctrl.inject_failure(agent_idx)
-                    ctrl.run_step()
-                    st.rerun()
-                elif key == "btn_inject_random":
-                    ctrl.inject_failure_random()
-                    ctrl.run_step()
-                    st.rerun()
-                elif key == "btn_unsafe":
-                    ctrl.trigger_unsafe(0)
-                    st.rerun()
-
-
 def kill_switch_banner(active: bool) -> None:
-    """Display kill-switch status prominently."""
+    """Kill-switch banner."""
     if active:
-        st.error(f"{ICONS['kill_switch']} **KILL-SWITCH ACTIVE** — System shut down for safety.")
+        st.error("Emergency shutdown active. The supervisory kill-switch has halted system operation.")
     else:
-        st.success(f"✅ System operational")
+        st.success("Supervisory safety system reports normal operation.")
 
 
 def redistribution_log_entries(log: list, max_entries: int = 10) -> None:
-    """Display recent redistribution events."""
+    """Redistribution log entries."""
+    if not log:
+        st.info("No redistribution events recorded.")
+        return
+
     for entry in log[-max_entries:][::-1]:
+        zones = entry.get("zones", [])
+        zone_text = ", ".join([f"Zone {z + 1}" for z in zones]) if zones else "N/A"
         st.caption(
             f"{ICONS['recovery']} Step {entry['step']}: "
-            f"Agent {entry['from_agent'] + 1} → Agent {entry['to_agent'] + 1}"
+            f"Agent {entry['from_agent'] + 1} → Agent {entry['to_agent'] + 1} | "
+            f"Zones reassigned: {zone_text}"
         )
 
 
-def simple_agent_view(model, redistribution_log: list) -> None:
-    """
-    Kid-friendly view: big agent cards that clearly show who is working,
-    who failed, and when others take over. Easy to understand at a glance.
-    """
-    agents = model.thermal_agents
-    n = len(agents)
+def control_buttons(ctrl) -> None:
+    """Primary control bar."""
+    cols = st.columns(6)
+    labels = [
+        (ICONS["play"], "Start", "start"),
+        (ICONS["pause"], "Pause", "pause"),
+        (ICONS["step"], "Step", "step"),
+        (ICONS["inject"], "Fail Chosen", "fail_chosen"),
+        (ICONS["inject"], "Fail Random", "fail_random"),
+        (ICONS["warning"], "Trigger Unsafe", "unsafe"),
+    ]
 
-    # One big card per agent in a horizontal row
-    cols = st.columns(n)
+    for col, (icon, label, action) in zip(cols, labels):
+        with col:
+            if st.button(f"{icon} {label}", key=f"btn_{action}", use_container_width=True):
+                if action == "start":
+                    st.session_state.auto_run = True
+                    st.rerun()
+                elif action == "pause":
+                    st.session_state.auto_run = False
+                    st.rerun()
+                elif action == "step":
+                    ctrl.run_step()
+                    st.rerun()
+                elif action == "fail_chosen":
+                    agent_idx = st.session_state.get("inject_agent", 0)
+                    ctrl.inject_failure(agent_idx)
+                    ctrl.run_step()
+                    st.rerun()
+                elif action == "fail_random":
+                    ctrl.inject_failure_random()
+                    ctrl.run_step()
+                    st.rerun()
+                elif action == "unsafe":
+                    ctrl.trigger_unsafe(0)
+                    ctrl.run_step()
+                    st.rerun()
+
+
+def simple_agent_view(model, redistribution_log: list) -> None:
+    """Simplified demonstration view for non-technical audiences."""
+    agents = model.thermal_agents
+    cols = st.columns(len(agents))
+
     for i, agent in enumerate(agents):
         with cols[i]:
             if agent.status == "active":
                 emoji = "🤖"
-                label = "Working!"
+                label = "Available"
                 color = "#22c55e"
-                msg = "This robot is watching the temperature and controlling the fan."
+                msg = "This agent is actively regulating its assigned zone."
                 if agent.task_load > 1:
-                    msg = f"This robot is helping with **{agent.task_load}** zones!"
+                    msg = f"This agent is currently supporting {agent.task_load} zones."
             elif agent.status == "failed":
                 emoji = "🤖💔"
-                label = "Stopped working"
+                label = "Unavailable"
                 color = "#ef4444"
-                msg = "This robot stopped. The other robots are doing its job now."
+                msg = "This agent has failed and its workload must be reassigned."
             else:
                 emoji = "🤖🔄"
-                label = "Getting better"
-                color = "#eab308"
-                msg = "This robot is recovering."
+                label = "Recovering"
+                color = "#f59e0b"
+                msg = "This agent is in a recovery state."
 
             st.markdown(
                 f"""
                 <div style="
-                    text-align: center; padding: 1.5rem; border-radius: 12px;
-                    background: {'#fef2f2' if agent.status == 'failed' else '#f0fdf4' if agent.status == 'active' else '#fefce8'};
-                    border: 4px solid {color}; margin: 0.5rem 0;
+                    text-align:center;
+                    padding:1.3rem;
+                    border-radius:14px;
+                    background:#f8fafc;
+                    border:4px solid {color};
+                    margin:0.5rem 0;
                 ">
-                    <div style="font-size: 4rem;">{emoji}</div>
-                    <div style="font-size: 1.4rem; font-weight: bold; color: {color};">
-                        Robot {i + 1}
-                    </div>
-                    <div style="font-size: 1.1rem; margin: 0.5rem 0;">{label}</div>
-                    <div style="font-size: 0.95rem; color: #374151;">{msg}</div>
+                    <div style="font-size:3.6rem;">{emoji}</div>
+                    <div style="font-size:1.2rem;font-weight:800;color:{color};">Agent {i + 1}</div>
+                    <div style="margin-top:0.4rem;font-weight:700;">{label}</div>
+                    <div style="margin-top:0.45rem;font-size:0.92rem;color:#334155;">{msg}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
-    # Simple story line for kids
-    failed = [a for a in agents if a.status == "failed"]
-    if failed and redistribution_log:
+    if redistribution_log:
         last = redistribution_log[-1]
         from_id = last["from_agent"] + 1
         to_id = last["to_agent"] + 1
         st.info(
-            f"**What happened:** Robot **{from_id}** stopped working. "
-            f"So Robot **{to_id}** is now doing Robot {from_id}'s job too! "
-            "The team shares the work when someone stops."
-        )
-    elif failed:
-        st.warning(
-            f"**What happened:** One of the robots stopped. "
-            "The others will take over its job when you press **Step**."
+            f"Latest reassignment: Agent {from_id} failed, and Agent {to_id} assumed its workload."
         )
 
     if model.system_shutdown:
-        st.error(
-            "**Safety stop:** Things got too hot or too many robots stopped, "
-            "so the system turned off to stay safe."
-        )
+        st.error("The simulation entered emergency shutdown because a safety threshold was exceeded.")
 
 
 def _controller_of_zone(model, zone_id: int):
-    """Return the agent that controls this zone (has zone_id in assigned_heat_sources)."""
-    for a in model.thermal_agents:
-        if zone_id in a.assigned_heat_sources:
-            return a
+    """Return the agent currently controlling the given zone."""
+    for agent in model.thermal_agents:
+        if zone_id in getattr(agent, "assigned_heat_sources", []):
+            return agent
     return None
 
 
 def simulation_animation(model, unsafe_threshold: float = 80.0, target_temp: float = 35.0) -> None:
     """
-    Child-friendly: lots of motion, minimal text. Robot controls fan to reach target temp.
-    Animated takeover when one robot switches to help another zone.
+    Visual simulation panel.
+
+    Kept visually engaging, but framed as an operational visualization rather than a toy view.
     """
     agents = model.thermal_agents
     n = len(agents)
@@ -234,12 +374,14 @@ def simulation_animation(model, unsafe_threshold: float = 80.0, target_temp: flo
         """
         <style>
         @keyframes fan-rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .robot-alive { animation: bounce 1.2s ease-in-out infinite; }
-        @keyframes bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
-        .heat-hot { animation: glow 0.8s ease-in-out infinite; }
-        @keyframes glow { 0%,100% { opacity: 1; filter: brightness(1.2); } 50% { opacity: 0.9; filter: brightness(1.5); } }
-        .arrow-move { animation: slide 0.8s ease-in-out infinite; }
-        @keyframes slide { 0%,100% { transform: translateX(0); opacity: 1; } 50% { transform: translateX(4px); opacity: 0.8; } }
+        .agent-active { animation: bounce 1.2s ease-in-out infinite; }
+        @keyframes bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+        .heat-alert { animation: glow 0.8s ease-in-out infinite; }
+        @keyframes glow { 0%,100% { opacity: 1; filter: brightness(1.15); } 50% { opacity: 0.92; filter: brightness(1.45); } }
+        .move-arrow { animation: slide 0.8s ease-in-out infinite; }
+        @keyframes slide { 0%,100% { transform: translateX(0); opacity: 1; } 50% { transform: translateX(4px); opacity: 0.78; } }
+        .supervisor-pulse { animation: sup-pulse 1.2s ease-in-out infinite; }
+        @keyframes sup-pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.05); opacity: 0.92; } }
         </style>
         """,
         unsafe_allow_html=True,
@@ -248,69 +390,65 @@ def simulation_animation(model, unsafe_threshold: float = 80.0, target_temp: flo
     zone_html = []
     for z in range(n):
         controller = _controller_of_zone(model, z)
-        agent = agents[z]
-        temp = model.zone_temperatures.get(z, agent.temperature)
-        # Each zone has its own physical fan; speed comes from model.fan_speeds.
+        owner = agents[z]
+        temp = model.zone_temperatures.get(z, owner.temperature)
         fan_speed = model.fan_speeds.get(z, 0)
-        heat = model.heat_sources.get(z, 5)
+        ratio = min(1.0, temp / unsafe_threshold) if unsafe_threshold > 0 else 0.0
 
-        ratio = min(1.0, temp / unsafe_threshold) if unsafe_threshold > 0 else 0
         r = int(255 * ratio)
         g = int(255 * (1 - ratio * 0.7))
         b = int(255 * (1 - ratio))
-        r, g, b = max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b))
-        heat_bg = f"rgb({r},{g},{b})"
+        heat_bg = f"rgb({max(0,min(255,r))},{max(0,min(255,g))},{max(0,min(255,b))})"
         fg = "white" if ratio > 0.5 else "black"
 
-        robot_icon = "🤖" if agent.status == "active" else "😵"
-        robot_class = "robot-alive" if agent.status == "active" else ""
-        fan_spinning = fan_speed > 0 and controller and controller.status == "active"
-        fan_dur = max(0.25, 1.4 - (fan_speed / 255) * 1.15) if fan_spinning else 1
-        fan_style = f"font-size:2.2rem;margin:6px 0;display:inline-block;" + (f"animation:fan-rotate {fan_dur}s linear infinite;" if fan_spinning else "")
-        heat_class = "heat-hot" if ratio > 0.6 else ""
-        bar_pct = min(100, (fan_speed / 255) * 100)
+        robot_icon = "🤖" if owner.status != "failed" else "⚙️"
+        robot_class = "agent-active" if owner.status == "active" else ""
+        spinning = fan_speed > 0 and controller and controller.status == "active"
+        fan_dur = max(0.25, 1.4 - (fan_speed / 255.0) * 1.15) if spinning else 1
+        fan_style = "font-size:2.2rem;margin:6px 0;display:inline-block;"
+        if spinning:
+            fan_style += f"animation:fan-rotate {fan_dur}s linear infinite;"
+
+        heat_class = "heat-alert" if temp >= unsafe_threshold * 0.85 else ""
+        bar_pct = min(100, (fan_speed / 255.0) * 100.0)
 
         controlled_by = ""
         if controller and controller.zone_id != z:
             cid = controller.zone_id
             controlled_by = (
-                f'<div style="margin-top:6px;padding:8px;background:linear-gradient(90deg,#064e3b,#065f46);'
-                'border-radius:10px;font-size:0.9rem;color:#6ee7b7;display:flex;align-items:center;justify-content:center;gap:6px;">'
-                f'<span class="robot-alive">🤖{cid+1}</span>'
-                '<span class="arrow-move">➡️</span><span class="arrow-move">➡️</span>'
-                '<span>cooling!</span>'
+                f'<div style="margin-top:6px;padding:8px;background:linear-gradient(90deg,#0f766e,#115e59);'
+                'border-radius:10px;font-size:0.88rem;color:#ccfbf1;display:flex;align-items:center;justify-content:center;gap:6px;">'
+                f'<span class="agent-active">Controller {cid + 1}</span>'
+                '<span class="move-arrow">➡️</span><span>reassigned support</span>'
                 '</div>'
             )
 
         zone_html.append(
-            f'<div style="flex:1;min-width:130px;text-align:center;padding:1rem;background:linear-gradient(180deg,#1e293b,#0f172a);'
-            f'border-radius:16px;margin:8px;border:4px solid {heat_bg};color:#e2e8f0;box-shadow:0 4px 12px rgba(0,0,0,0.3);">'
-            f'<div class="{robot_class}" style="font-size:3.5rem;">{robot_icon}</div>'
+            f'<div style="flex:1;min-width:145px;text-align:center;padding:1rem;background:linear-gradient(180deg,#1e293b,#0f172a);'
+            f'border-radius:16px;margin:8px;border:4px solid {heat_bg};color:#e2e8f0;box-shadow:0 4px 12px rgba(0,0,0,0.28);">'
+            f'<div class="{robot_class}" style="font-size:3.2rem;">{robot_icon}</div>'
             f'<div style="{fan_style}">🌀</div>'
             f'<div style="height:12px;background:#334155;border-radius:6px;overflow:hidden;margin:6px 0;">'
-            f'<div style="height:100%;width:{bar_pct}%;background:linear-gradient(90deg,#22c55e,#4ade80);border-radius:6px;transition:width 0.3s;"></div></div>'
+            f'<div style="height:100%;width:{bar_pct}%;background:linear-gradient(90deg,#22c55e,#4ade80);border-radius:6px;"></div></div>'
             f'<div class="{heat_class}" style="margin:6px 0;padding:8px;border-radius:10px;background:{heat_bg};color:{fg};font-size:1.2rem;font-weight:bold;">'
-            f'🌡️ {temp:.0f}°</div>'
-            f'<div style="font-size:0.75rem;color:#94a3b8;">goal: {target_temp:.0f}°</div>'
-            f'<div style="margin-top:4px;font-size:1.5rem;">🔥</div>'
+            f'🌡️ {temp:.0f}°C</div>'
+            f'<div style="font-size:0.75rem;color:#94a3b8;">Target: {target_temp:.0f}°C</div>'
+            f'<div style="margin-top:4px;font-size:1.4rem;">🔥</div>'
             f'{controlled_by}</div>'
         )
 
-    zones_inner = "".join(zone_html)
-
-    # Floating takeover banner: Robot X → Zone Y (animated)
     takeover_viz = ""
     if log:
         last = log[-1]
-        from_z, to_z = last["from_agent"], last["to_agent"]
+        from_z = last["from_agent"]
+        to_z = last["to_agent"]
         takeover_viz = (
             '<div style="display:flex;justify-content:center;margin-bottom:12px;">'
-            '<div style="display:flex;align-items:center;gap:10px;background:linear-gradient(90deg,#064e3b,#065f46);'
-            'padding:10px 20px;border-radius:24px;box-shadow:0 4px 12px rgba(0,0,0,0.3);">'
-            f'<span class="robot-alive" style="font-size:1.8rem;">🤖{to_z+1}</span>'
-            '<span class="arrow-move" style="font-size:1.2rem;">➡️</span>'
-            '<span class="arrow-move" style="font-size:1.2rem;">➡️</span>'
-            f'<span style="font-size:1.1rem;">Zone {from_z+1}</span>'
+            '<div style="display:flex;align-items:center;gap:10px;background:linear-gradient(90deg,#0f766e,#115e59);'
+            'padding:10px 20px;border-radius:24px;box-shadow:0 4px 12px rgba(0,0,0,0.25);color:#ecfeff;">'
+            f'<span class="agent-active" style="font-size:1.15rem;font-weight:700;">Agent {to_z + 1}</span>'
+            '<span class="move-arrow" style="font-size:1.1rem;">➡️</span>'
+            f'<span style="font-size:1rem;">assumed workload from Agent {from_z + 1}</span>'
             '</div></div>'
         )
 
@@ -319,14 +457,42 @@ def simulation_animation(model, unsafe_threshold: float = 80.0, target_temp: flo
         overlay = (
             '<div style="position:absolute;inset:0;background:rgba(220,38,38,0.92);border-radius:16px;'
             'display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:bold;color:white;">'
-            '<div style="font-size:4rem;animation:glow 0.5s infinite;">🛑</div>'
-            '<div style="font-size:1.8rem;">STOP</div></div>'
+            '<div style="font-size:4rem;">🛑</div>'
+            '<div style="font-size:1.7rem;">Emergency Shutdown</div></div>'
         )
+
+    temps = list(getattr(model, "zone_temperatures", {}).values())
+    max_temp = max(temps) if temps else 0.0
+    warning_at = unsafe_threshold * 0.85
+
+    if model.system_shutdown:
+        sup_color = "#ef4444"
+        sup_text = "Emergency shutdown active"
+    elif max_temp >= unsafe_threshold:
+        sup_color = "#dc2626"
+        sup_text = "Critical thermal condition detected"
+    elif max_temp >= warning_at:
+        sup_color = "#f59e0b"
+        sup_text = "Thermal warning threshold reached"
+    else:
+        sup_color = "#22c55e"
+        sup_text = "Supervisory monitoring active"
+
+    supervisor_overlay = (
+        f'<div style="position:absolute;left:14px;top:14px;background:rgba(11,18,32,0.95);'
+        f'border:2px solid {sup_color};border-radius:14px;padding:10px 12px;max-width:250px;'
+        'color:#e5e7eb;box-shadow:0 6px 18px rgba(0,0,0,0.22);">'
+        f'<div class="supervisor-pulse" style="font-weight:900;">🛡️ Supervisor</div>'
+        f'<div style="margin-top:6px;font-size:0.9rem;">{sup_text}</div>'
+        f'<div style="margin-top:4px;font-size:0.85rem;color:#9ca3af;">Max temp: {max_temp:.1f} °C</div>'
+        '</div>'
+    )
 
     st.markdown(
         f'<div style="position:relative;padding:1.5rem;border-radius:16px;background:#0f172a;margin:1rem 0;">'
+        f'{supervisor_overlay}'
         f'{takeover_viz}'
-        f'<div style="display:flex;flex-wrap:wrap;justify-content:center;align-items:stretch;">{zones_inner}</div>'
+        f'<div style="display:flex;flex-wrap:wrap;justify-content:center;align-items:stretch;">{"".join(zone_html)}</div>'
         f'{overlay}</div>',
         unsafe_allow_html=True,
     )

@@ -1,15 +1,20 @@
-"""Custom scheduler wrapper.
+"""Custom scheduler for deterministic resilience experiments."""
 
-Mesa already provides several schedulers; this class leaves room for custom
-activation order (for example: supervisor -> recovery -> thermal agents).
-"""
-
-from mesa.time import RandomActivation
+from mesa.time import BaseScheduler
 
 
-class ResilienceScheduler(RandomActivation):
-    """Simple extension point for deterministic or role-based stepping."""
+class ResilienceScheduler(BaseScheduler):
+    """
+    Deterministic scheduler for MAS resilience experiments.
+
+    Intended order:
+    1. thermal agents
+    2. failure detection / redistribution handled by model
+    3. supervisor
+    """
 
     def step(self) -> None:
-        # Keep default random activation for scaffold stage.
-        super().step()
+        for agent in list(self._agents.values()):
+            agent.step()
+        self.steps += 1
+        self.time += 1
