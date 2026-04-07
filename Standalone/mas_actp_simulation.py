@@ -14,7 +14,7 @@ Implements:
 
 Generates six publication-quality graphs.
 
-Author: Dimitri Barth Nanmejo Sinou
+Author: Dimitri Barth Nanmejo Sinou - Need some more work
 Framework: Mesa-compatible architecture (standalone numpy/Python implementation)
 """
 
