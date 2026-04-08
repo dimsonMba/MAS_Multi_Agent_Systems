@@ -872,7 +872,7 @@ def export_summary(results: dict, out_dir: Path):
 # ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    out_dir = Path("/mnt/user-data/outputs")
+    out_dir = Path("MAS_Multi_Agent_Systems\Standalone")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print("\n" + "="*55)
