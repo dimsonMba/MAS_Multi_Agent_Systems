@@ -1,0 +1,7 @@
+n_agents,protocol,avg_jain_fairness,avg_recovery_time,final_task_completion,max_failed_fraction,ks_red_steps
+20,baseline,1.0,0.0,0.0,0.2,0
+20,actp,1.0,0.0,0.0,0.2,0
+100,baseline,1.0,0.0,0.0,0.23,0
+100,actp,1.0,0.0,0.0,0.23,0
+500,baseline,1.0,0.0,0.0,0.234,0
+500,actp,1.0,0.0,0.0,0.234,0
